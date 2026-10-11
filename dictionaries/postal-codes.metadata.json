@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "source": "日本郵便株式会社 住所の郵便番号（1レコード1行、UTF-8形式）",
+  "source_url": "https://www.post.japanpost.jp/service/search/zipcode/download/utf/zip/utf_ken_all.zip",
+  "terms_url": "https://www.post.japanpost.jp/service/search/zipcode/download/readme.html",
+  "source_date": "2026-09-30",
+  "source_sha256": "444881769a631d2c36c644fc041e5ce62fe65d204ff498a601641ba1e66b5955",
+  "dictionary_sha256": "2f0dafda606e7ed81a3e5d3ce855754048d5a8299be712800ac5a89e491a9c0a",
+  "compressed_bytes": 1060866,
+  "source_records": 124526,
+  "postal_codes": 120720,
+  "address_candidates": 124525,
+  "multiple_address_codes": 1338,
+  "max_candidates_per_code": 66,
+  "uncompressed_bytes": 6286603
+}

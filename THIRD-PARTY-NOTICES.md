@@ -367,3 +367,14 @@ Meltype 本体と同じライセンス (GPL-3.0-or-later) です。
 
 - `docs/meltype.jpg`・`docs/images/logo.png` (Meltype のロゴ) は [@Crysta1221](https://github.com/Crysta1221) さんの作品です。
 - `docs/images/headings/` の画像 (README と docs/ の見出し) と `docs/images/demo.svg`・`docs/images/features.svg` の文字は、M PLUS Rounded 1c (Copyright 2016 The M+ Project Authors、SIL Open Font License 1.1) の字形を図形にしたものです。
+
+
+## 郵便番号から住所への変換データ
+
+`dictionaries/postal-codes.tsv.gz` は、日本郵便株式会社の[住所の郵便番号（1 レコード 1 行、UTF-8 形式）](https://www.post.japanpost.jp/service/search/zipcode/download/utf-zip.html)の全国データを加工したものです。Windows・Mac・Linux の共通 Core に同梱します。
+
+[使用・再配布・移植・改良について](https://www.post.japanpost.jp/service/search/zipcode/download/readme.html):
+
+> 郵便番号データに限っては日本郵便株式会社は著作権を主張しません。自由に配布していただいて結構です。
+
+同梱版の元データは 2026 年 9 月 30 日更新分、初回取得日は 2026 年 10 月 11 日です。各版の更新日・元 ZIP と生成辞書の SHA-256・件数・加工形式の版は `dictionaries/postal-codes.metadata.json` を参照してください。更新と加工仕様は [docs/POSTAL-CODES.md](docs/POSTAL-CODES.md) を参照してください。

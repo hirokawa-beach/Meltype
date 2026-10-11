@@ -96,6 +96,26 @@ internal static class TipEndToEnd
                     results.Add((name, expected, box.Text));
                 }
 
+                if (Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_ONLY") == "1")
+                {
+                    async Task Postal(string input, string name)
+                    {
+                        box.Clear();
+                        await Task.Delay(200);
+                        TypeKeys(input + " ");
+                        await Task.Delay(500);
+                        if (ShotDirectory is { } shot) Capture(form, Path.Combine(shot, name + ".png"));
+                        TypeKeys("↓\n");
+                        await Task.Delay(800);
+                        results.Add((name, Composition.PostalCodeDictionary.Lookup(input).Single().Text, box.Text));
+                    }
+                    await Postal("1000001", "postal-digits-tokyo");
+                    await Postal("100-0001", "postal-hyphen-tokyo");
+                    await Postal("6028368", "postal-digits-kyoto");
+                    await Postal("602-8368", "postal-hyphen-kyoto");
+                    return;
+                }
+
                 await Case("かな", "kyouha\n", "きょうは");
                 await Case("漢字", "kyouhaiitenkidesune \n", "今日はいい天気ですね");
                 await Case("英単語", "hello world", "hello world");
@@ -179,6 +199,9 @@ internal static class TipEndToEnd
                 '\u001b' => 0x1B,
                 '§' => 0xF3,
                 '←' => 0x25,
+                '↓' => 0x28,
+                '-' => 0xBD,
+                >= '0' and <= '9' => c,
                 >= 'a' and <= 'z' => c - 'a' + 'A',
                 _ => throw new ArgumentException($"送れない文字: {c}"),
             };

@@ -43,6 +43,8 @@ jobs:
           dotnet-version: 10.0.x
       - name: Build
         run: dotnet build Meltype.sln -c Release
+      - name: Test postal dictionary generator
+        run: python tools/test_postal_generator.py
 
       # Meltype IME (入力欄に直接入力する TSF の DLL)。C++ なので dotnet build とは別にビルドする (x64 と x86)。
       - name: Build Meltype IME

@@ -304,6 +304,10 @@ public sealed class CompositionController
         /// <summary>Windows の変換候補 API の候補を足したか。</summary>
         public bool Expanded { get; set; }
 
+        /// <summary>郵便番号の文節。分割・学習・外部エンジンの展開をしない。</summary>
+        public bool IsPostalCode { get; init; }
+        public IReadOnlyDictionary<string, string>? PostalNotes { get; init; }
+
         /// <summary>この文節の読みを打ったときの英字 (あぴ → api)。分からなければ null。</summary>
         public string? Raw { get; set; }
 
@@ -330,6 +334,7 @@ public sealed class CompositionController
         if (_options.RomajiTypos is { } lexicon) detector.IsCommonJapanese ??= lexicon.IsCommonJapanese;
         _text.CorrectTypos = () => _options.CorrectTypos();
         _text.SlashAsMiddleDot = () => _options.SlashAsMiddleDot();
+        PostalCodeDictionary.WarmUp();
     }
 
     /// <summary>変換ボックスに入力中か、英数状態で打ち始めの語を判定中か。</summary>
@@ -632,6 +637,10 @@ public sealed class CompositionController
             case VirtualKeys.Kana when _options.SeparateKeyRoles():
                 // ひらがな / カタカナ キー: 押すたびに ひらがな ⇔ カタカナ (漢字・英字の状態からは、まずひらがな)
                 SetMode(_text.Mode == DisplayMode.Hiragana && !_converting ? DisplayMode.Katakana : DisplayMode.Hiragana);
+                return;
+            case VirtualKeys.Space when PostalCandidates().Count > 0:
+                _spaceStartedConversion = true;
+                StartConversion();
                 return;
             case VirtualKeys.Space:
                 // 保護区間 (メンション・URL・パス) の末尾は、自動変換せず原文のまま + 半角空白で確定する。
@@ -1081,6 +1090,7 @@ public sealed class CompositionController
     /// </summary>
     private bool TabStartsConversion()
     {
+        if (PostalCandidates().Count > 0) return true;
         // 保護区間が語の途中にあり、その後にかなが続く入力も Tab 変換しない。
         // IsProtectedInput は末尾が保護区間かだけを見るため、ここでは全区間を調べる。
         if (_text.Mode == DisplayMode.Auto && _text.ProtectedSpans().Count > 0) return false;
@@ -1217,6 +1227,12 @@ public sealed class CompositionController
         }
     }
 
+    /// <summary>番号全体の住所候補。直接入力・かな入力・保護区間は対象にしない。</summary>
+    private IReadOnlyList<PostalCodeDictionary.Address> PostalCandidates(bool preferJapanese = false) =>
+        !_text.KanaInput && (_text.Mode is DisplayMode.Auto or DisplayMode.Hiragana) &&
+        !_text.HasProtectedTail && (_text.PrecedingEnglish != true || preferJapanese)
+            ? PostalCodeDictionary.Lookup(_text.Raw) : [];
+
     /// <summary>
     /// 英語区間はそのまま、日本語区間は文脈を付けて変換エンジンで文節に区切って変換する。
     /// 英語区間も、ローマ字として読めれば日本語の候補 (go → 語 ご ゴ) を後ろに足す。preferJapanese (Shift+Space) なら前に出す。
@@ -1224,6 +1240,22 @@ public sealed class CompositionController
     private void StartConversion(bool preferJapanese = false)
     {
         _tabStartedConversion = false;
+        var postal = PostalCandidates(preferJapanese);
+        if (postal.Count > 0)
+        {
+            // 元入力を先頭に残し、未確定の番号全体を 1 文節として扱う。
+            // 住所は同梱データからだけ取り、エンジンの分割・学習による古い住所を混ぜない。
+            _clauses = [new Clause(_text.Raw, false, Distinct([_text.Raw, .. postal.Select(a => a.Text), CompositionText.ToFullWidth(_text.Raw)]))
+            {
+                Raw = _text.Raw,
+                Expanded = true,
+                IsPostalCode = true,
+                PostalNotes = postal.GroupBy(a => a.Text).ToDictionary(g => g.Key, g => g.First().Note),
+            }];
+            _selectedClause = 0;
+            _converting = true;
+            return;
+        }
         var clauses = new List<Clause>();
         var segments = _text.ConversionSegments();
         for (var s = 0; s < segments.Count; s++)
@@ -1756,6 +1788,7 @@ public sealed class CompositionController
     {
         var notes = clause.Candidates.Select(c =>
         {
+            if (clause.PostalNotes?.TryGetValue(c, out var postalNote) == true) return postalNote;
             if (clause.Translations.Contains(c)) return "英訳";
             var half = ToHalfWidth(c);
             if (half != c && clause.Candidates.Contains(half)) return "全角";
@@ -1842,6 +1875,7 @@ public sealed class CompositionController
     /// </summary>
     private void Resize(int delta)
     {
+        if (_clauses[_selectedClause].IsPostalCode) return;
         if (_clauses[_selectedClause].IsEnglish && !ReadAsJapanese(_selectedClause)) return;
         var current = _clauses[_selectedClause];
         var next = _selectedClause + 1 < _clauses.Count ? _clauses[_selectedClause + 1] : null;
@@ -1959,7 +1993,8 @@ public sealed class CompositionController
         RecordCorrection(converting, text, suffix);
         if (converting) Learn();
         else LearnLanguage();
-        RememberPhrase(converting ? string.Concat(_clauses.Select(c => c.IsEnglish ? "" : c.Reading)) : _text.AllKana(final: true), text, english);
+        if (!converting || !_clauses.Any(c => c.IsPostalCode))
+            RememberPhrase(converting ? string.Concat(_clauses.Select(c => c.IsEnglish ? "" : c.Reading)) : _text.AllKana(final: true), text, english);
         CommitText(text + suffix, english, _text.Raw, chosen, preserveText);
     }
 
@@ -2150,7 +2185,7 @@ public sealed class CompositionController
     private void Learn()
     {
         // 設定「ユーザー学習を使う」が OFF なら、新しく覚えない (issue #277)
-        if (!_options.Learning()) return;
+        if (!_options.Learning() || _clauses.Any(c => c.IsPostalCode)) return;
         // 変換の候補から打ったままの英字 (api) を選んで確定したら、その語は次から英字にする (F10 と同じ)。
         foreach (var clause in _clauses.Where(c => !c.IsEnglish && c.Changed && c.Raw is { } raw && c.Text == raw))
         {
@@ -2332,7 +2367,9 @@ public sealed class CompositionController
                 selected.Candidates,
                 selected.Index,
                 true,
-                "←→ 文節　Space/↓ 候補　1〜9 選択　Shift+←→ 区切り　Enter 確定　Esc 戻る",
+                selected.IsPostalCode
+                    ? "Space/↓ 候補　1〜9 選択　Enter 確定　Esc 戻る"
+                    : "←→ 文節　Space/↓ 候補　1〜9 選択　Shift+←→ 区切り　Enter 確定　Esc 戻る",
                 _clauses.Select(c => c.Text).ToList(),
                 _selectedClause,
                 CandidateNotes(selected),

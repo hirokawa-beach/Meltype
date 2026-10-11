@@ -20,5 +20,6 @@
     <InternalsVisibleTo Include="Meltype.Core.Tests" />
     <InternalsVisibleTo Include="MeltypeNative" />
     <EmbeddedResource Include="..\..\dictionaries\*.txt" LogicalName="Meltype.dictionaries.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\dictionaries\postal-codes.tsv.gz" LogicalName="Meltype.dictionaries.postal-codes.tsv.gz" />
   </ItemGroup>
 </Project>
