@@ -140,7 +140,7 @@ class PostalGeneratorTests(unittest.TestCase):
         self.assertEqual(a, b)
 
     def test_koaza_requires_flag_and_entire_list_to_be_safe(self):
-        towns = ["桧原（秋元、その他）", "桧原（秋元、裏磐梯を除く）", "桧原（秋元、）", "桧原（秋元（南）、裏磐梯）", "桧原（秋元、地区）", "種市第１地割〜第３地割（八木南町、八木北町）", "南郷通（南）", "共和町（キョウワマチ）", "大山（小牧大山）", "関和久（八雲神社）", "桧原（秋元、字１２）", "桧原（秋元から裏磐梯まで）", "桧原（秋元及び裏磐梯）"]
+        towns = ["桧原（秋元、その他）", "桧原（秋元、裏磐梯を除く）", "桧原（秋元、）", "桧原（秋元（南）、裏磐梯）", "桧原（秋元、地区）", "種市第１地割〜第３地割（八木南町、八木北町）", "南郷通（南）", "共和町（キョウワマチ）", "大山（小牧大山）", "桧原（秋元、字１２）", "桧原（秋元から裏磐梯まで）", "桧原（秋元及び裏磐梯）"]
         for town in towns:
             with self.subTest(town=town):
                 data, _ = records([row("1000001", town, koaza=True)])
@@ -183,6 +183,49 @@ class PostalGeneratorTests(unittest.TestCase):
         for town in ["泉沢（烏帽子「榛名湖畔」、国有林の未確認な説明）", "関山（熊堂山、妙高山国有林第２８班の北側）"]:
             data, _ = records([row("1000001", town)])
             self.assertEqual(data[0][7], "")
+
+    def test_airport_interior_and_pasture_have_distinct_spacing(self):
+        source = [row("2820011", "三里塚（御料牧場・成田国際空港内）"), row("2820010", "吉岡（成田国際空港内）")]
+        data, stats = records(source)
+        self.assertEqual(data[1][3:5], ["airport", "三里塚"])
+        self.assertEqual(json.loads(data[1][7]), ["御料牧場", " 成田国際空港内"])
+        self.assertEqual(json.loads(data[0][7]), [" 成田国際空港内"])
+        self.assertEqual(data[1][2], source[0][8])
+        self.assertEqual(stats["classification_details"]["airport_separated"], 2)
+        self.assertEqual(stats["classification_details"]["airport_variants"], 3)
+        first, a = generator.build_dictionary(archive(source))
+        second, b = generator.build_dictionary(archive(source[::-1]))
+        self.assertEqual(first, second)
+        self.assertEqual(a, b)
+
+    def test_airport_unknown_mixed_annotations_are_not_partially_expanded(self):
+        for town in ["三里塚（御料牧場・成田国際空港内・その他）", "三里塚（御料牧場・成田国際空港内・未確認の説明）", "三里塚（空港内）"]:
+            data, _ = records([row("1000001", town)])
+            self.assertEqual(data[0][7], "")
+            self.assertEqual(data[0][2], town)
+
+    def test_explicit_facilities_are_separated_with_a_space(self):
+        for town, expected in [("内田町（石見空港）", [" 石見空港"]), ("岩神町（足助高等学校）", [" 足助高等学校"]), ("関和久（八雲神社）", [" 八雲神社"]), ("黒瀬町南方（賀茂精神医療センター）", [" 賀茂精神医療センター"]), ("下増田（南原無番地、仙台空港関係施設）", ["南原", " 仙台空港関係施設"]), ("杉名畑４４地割（湯田ダム管理事務所、後口山、当楽）", [" 湯田ダム管理事務所", "後口山", "当楽"]), ("甲（第２研究所７番地）", [" 第２研究所"]), ("芦田町福田（３７６−１０「聖宝寺」）", [" 聖宝寺"])]:
+            with self.subTest(town=town):
+                data, _ = records([row("1000001", town)])
+                self.assertEqual(data[0][3], "facility")
+                self.assertEqual(json.loads(data[0][7]), expected)
+                self.assertEqual(data[0][2], town)
+
+    def test_facility_like_town_names_conditions_and_ignored_notes_are_retained(self):
+        for town in ["甲（寺前）", "甲（観音寺）", "甲（長楽寺）", "甲（大学村）", "甲（内園）", "甲（施設１番地・未確認の説明）", "甲（病院を除く）", "甲（石見空港、未確認の説明）", "甲（乙〔東京電力福島第二原子力発電所構内〕）", "第１地割〜第３地割（石見空港）"]:
+            with self.subTest(town=town):
+                data, _ = records([row("1000001", town)])
+                self.assertEqual(data[0][7], "")
+                self.assertEqual(data[0][2], town)
+        data, _ = records([row("1000001", "甲（寺前、観音寺）", koaza=True)])
+        self.assertEqual(json.loads(data[0][7]), ["寺前", "観音寺"])
+
+    def test_ambiguous_facility_names_are_scoped_to_verified_region(self):
+        data, _ = records([row("1000001", "甲（たかね荘）", "山梨県", "北杜市")])
+        self.assertEqual(json.loads(data[0][7]), [" たかね荘"])
+        data, _ = records([row("1000001", "甲（たかね荘）")])
+        self.assertEqual(data[0][7], "")
 
     def test_invalid_records_and_empty_data_are_rejected(self):
         for rows in ([], [row("100000", "千代田")], [row("１０００００１", "千代田")], [["1000001"]], [row("1000001", "町\n域")]):

@@ -127,14 +127,14 @@ def building_parts(rows):
 
 
 NAME = re.compile(r"[一-鿿々ヶケぁ-ゖァ-ヺー]+")
-NON_NAME = re.compile(r"丁目|番地|地割|その他|場合|一円|全域|通称|通り|地内|地区|国有林|施設|農場|牧場|事務所|団地|温泉|神社|から|まで|及び|および|又は|または|含む|除く|区域|付近|周辺|俗称|限る|以内|以降|以前|号$|棟|階|区$")
+NON_NAME = re.compile(r"丁目|番地|地割|その他|場合|一円|全域|通称|通り|地内|地区|国有林|施設|農場|牧場|事務所|団地|温泉|神社|から|まで|及び|および|又は|または|含む|除く|区域|付近|周辺|俗称|限る|以内|以降|以前|説明|未確認|不明|不詳|号$|棟|階|区$")
 
 
 FOREST_BLOCK = re.compile(r"(?P<name>[一-鿿々ヶケぁ-ゖァ-ヺー]+国有林)(?:第)?[０-９0-9]+(?:林班|班)")
 IGNORED = re.compile(r"\[[^\[\]]*\]|［[^［］]*］|〔[^〔〕]*〕")
 
 
-def koaza_tokens(body):
+def koaza_tokens(body, separators="、"):
     # 角括弧内の地名・施設・数字は候補に使わない。入れ子も内側から消す。
     while True:
         cleaned = IGNORED.sub("", body)
@@ -149,7 +149,7 @@ def koaza_tokens(body):
         elif c == "」":
             if not quoted: return None
             quoted = False
-        elif c == "、" and not quoted:
+        elif c in separators and not quoted:
             tokens.append(body[start:i]); start = i + 1
     if quoted: return None
     tokens.append(body[start:])
@@ -159,6 +159,7 @@ def koaza_tokens(body):
 def koaza_name(token):
     """番地の末尾を落とす。未知の条件は None、数字だけの続きは空文字。"""
     if not token: return None
+    if token.endswith("無番地") and len(token) > len("無番地"): token = token[:-len("無番地")]
     if FOREST_BLOCK.fullmatch(token): return token  # 林班は番地と分け、番号・単位も候補に残す。
     parts = re.split(r"「([^「」]*)」", token)
     name = ""
@@ -210,6 +211,84 @@ def koaza_parts(row):
     return town, names
 
 
+AIRPORT_INTERIOR = re.compile(r"[一-鿿々ヶケぁ-ゖァ-ヺー]+空港内")
+
+
+def airport_parts(row):
+    """空港内の所在地を分離。牧場などの併記は町域に連結、空港内は空白を挟む。"""
+    if classify(*row[6:9])[0] != "other": return None
+    outer = OUTER.fullmatch(row[8])
+    if not outer or not NAME.fullmatch(outer["town"]) or RANGE.search(outer["town"]): return None
+    tokens = re.split(r"[、・]", outer["wide"] or outer["ascii"])
+    if not any(AIRPORT_INTERIOR.fullmatch(t) for t in tokens): return None
+    names = []
+    for token in tokens:
+        if AIRPORT_INTERIOR.fullmatch(token):
+            name = " " + token
+        elif NAME.fullmatch(token) and re.fullmatch(r"[一-鿿々ヶケぁ-ゖァ-ヺー]+牧場", token) and not NON_NAME.search(token.removesuffix("牧場")):
+            name = token
+        elif row[10] == "1" and (name := koaza_name(token)):
+            pass
+        else:
+            return None
+        if name not in names: names.append(name)
+    return outer["town"], names
+
+
+# 語尾だけでは地名とも区別できない「寺」「園」「荘」は一般ルールにしない。
+FACILITY_NAME = re.compile(r"[一-鿿々ヶケぁ-ゖァ-ヺー０-９0-9A-Za-zＡ-Ｚａ-ｚ]+(?:空港(?:内|関係施設)?|神社|高等学校|中学校|小学校|学校|大学|病院|医療センター|センター|管理事務所|事務所|研究所|博物館|美術館|発電所(?:構内)?|工場(?:内)?|公園|動物園|植物園|遊園地|球場|競技場|体育館|会館|図書館|公民館|役場|庁舎|消防署|警察署|郵便局|診療所|施設|スキー場|寮|旅館|ホテル|農場|牧場|ダム)")
+VERIFIED_FACILITY_NAMES = {
+    # 所在地域と施設名の組を公式資料で確認。出典は POSTAL-DATA-ANALYSIS.md。
+    ("山梨県", "北杜市", "たかね荘"),
+    ("山梨県", "甲州市", "すずらん荘"),
+}
+FACILITY_BASE = re.compile(r"[一-鿿々ヶケぁ-ゖァ-ヺー０-９0-9－−\-]+")
+
+
+def is_facility_name(name, row):
+    if LIMIT.search(name) or re.search(r"説明|未確認|不明|不詳|範囲|区域|以内|以降|以前", name): return False
+    return bool(FACILITY_NAME.fullmatch(name) or (*row[6:8], name) in VERIFIED_FACILITY_NAMES)
+
+
+def facility_suffix(token, row):
+    """施設を確認できれば先頭空白付きの接尾辞。確認できなければ None。"""
+    if is_facility_name(token, row): return " " + token
+    # 施設名自体に含まれる数字は保持し、施設名の後ろの番地だけ省略する。
+    for number in re.finditer(r"[０-９0-9]", token):
+        prefix, tail = token[:number.start()], token[number.start():]
+        if is_facility_name(prefix, row) and SAFE_RANGE.fullmatch(tail): return " " + prefix
+    quote = re.fullmatch(r"([^「」]+)「([^「」]+)」", token)
+    if not quote: return None
+    before, named = quote[1], quote[2]
+    # 数字付きの所在地に引用された寺名は施設の記載と判断する。
+    quoted_temple = bool(SAFE_RANGE.fullmatch(before) and re.search(r"[０-９0-9]", before) and re.fullmatch(r"[一-鿿々ヶケぁ-ゖァ-ヺー]+寺", named))
+    if not is_facility_name(named, row) and not quoted_temple: return None
+    prefix = koaza_name(before)
+    if prefix is None: return None
+    return prefix + " " + named
+
+
+def facility_parts(row):
+    """施設名が明記された単一括弧の所在地を、施設と通常地名に分ける。"""
+    if classify(*row[6:9])[0] not in ("other", "range", "restricted"): return None
+    outer = OUTER.fullmatch(row[8])
+    if not outer: return None
+    town, body = outer["town"], outer["wide"] or outer["ascii"]
+    if not FACILITY_BASE.fullmatch(town) or LIMIT.search(town): return None
+    tokens = koaza_tokens(body, "、・")
+    if tokens is None: return None
+    names, facilities = [], 0
+    for token in tokens:
+        name = facility_suffix(token, row)
+        if name is not None:
+            facilities += 1
+        else:
+            name = koaza_name(token)
+            if name is None: return None
+        if name and name not in names: names.append(name)
+    return (town, names) if facilities and names else None
+
+
 def analyze(rows):
     counts = Counter({k: 0 for k in LABELS})
     examples = defaultdict(list)
@@ -222,8 +301,16 @@ def analyze(rows):
         counts[category] += 1
         if len(examples[category]) < 5:
             examples[category].append({"code": row[2], "region": row[6] + row[7], "town": row[8], "base_town": base, "street_count": len(paths)})
-        small = koaza_parts(row)
-        if small:
+        airport = airport_parts(row)
+        facility = None if airport else facility_parts(row)
+        small = airport or facility or koaza_parts(row)
+        if airport:
+            subtypes["airport_separated"] += 1
+            subtypes["airport_variants"] += len(airport[1])
+        elif facility:
+            subtypes["facility_separated"] += 1
+            subtypes["facility_variants"] += len(facility[1])
+        elif small:
             subtypes["koaza_separated"] += 1
             subtypes["koaza_names"] += len(small[1])
         elif tuple(row[6:9]) in buildings:
@@ -252,12 +339,14 @@ def build_dictionary(archive):
         kind, base, streets = classify(*row[6:9])
         paths = json.dumps(streets, ensure_ascii=False, separators=(",", ":")) if streets else ""
         building = buildings.get(tuple(row[6:9]))
-        small = koaza_parts(row)
+        airport = airport_parts(row)
+        facility = None if airport else facility_parts(row)
+        small = airport or facility or koaza_parts(row)
         if building: kind = "building"
-        elif small: kind, base = "koaza", small[0]
+        elif small: kind, base = "airport" if airport else "facility" if facility else "koaza", small[0]
         structured = json.dumps(building, ensure_ascii=False, separators=(",", ":")) if building else ""
         koaza = json.dumps(small[1], ensure_ascii=False, separators=(",", ":")) if small else ""
-        # 8 列: 番号、都道府県+市区町村、町域原文、種別、安全に分離した町名、通り名+結合可否、建物の町域+名称+階数、小字の配列。
+        # 8 列: 番号、都道府県+市区町村、町域原文、種別、安全に分離した町名、通り名+結合可否、建物の町域+名称+階数、小字・所在地の接尾辞配列。
         fields = (row[6] + row[7], row[8], kind, base, paths, structured, koaza)
         entries.setdefault(row[2], set()).add(fields)
     lines = [code + "\t" + "\t".join(fields) + "\n" for code in sorted(entries) for fields in sorted(entries[code])]

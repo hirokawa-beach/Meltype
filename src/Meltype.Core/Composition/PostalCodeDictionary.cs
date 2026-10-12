@@ -96,14 +96,23 @@ public static class PostalCodeDictionary
             if (detail is not null && !(old.Detail?.Split("\n\n").Contains(detail) ?? false))
                 result[index] = old with { Note = old.Note == note ? note : "条件・複数表記", Detail = old.Detail is null ? detail : old.Detail + "\n\n" + detail };
         }
-        static bool HasKoaza(Record row) => row.Kind == "koaza" && row.BaseTown.Length > 0 && row.Koaza is { Count: > 0 };
+        static bool HasKoaza(Record row) => (row.Kind is "koaza" or "airport" or "facility") && row.BaseTown.Length > 0 && row.Koaza is { Count: > 0 };
         if (types.Koaza)
         {
             foreach (var row in records.Where(HasKoaza))
             foreach (var name in row.Koaza!)
-                Add(row.Region + row.BaseTown + name, "小字込み", "選択した小字: " + name + "\n町域原文: " + row.Town);
+            {
+                var note = row.Kind switch {
+                    "airport" when name.StartsWith(' ') => "空港内",
+                    "facility" when name.StartsWith(' ') => "施設",
+                    "airport" or "facility" => "住所",
+                    _ => "小字込み",
+                };
+                Add(row.Region + row.BaseTown + name, note,
+                    (row.Kind is "airport" or "facility" ? "選択した所在地: " : "選択した小字: ") + name.TrimStart() + "\n町域原文: " + row.Town);
+            }
         }
-        // 小字がある行は ON なら小字だけ、OFF なら大字までを出す。郵便番号自体は呼び出し側が先頭に残す。
+        // 小字・所在地を分離できた行は ON なら分離した候補だけ、OFF なら町域までを出す。郵便番号自体は呼び出し側が先頭に残す。
         if (types.BasicAddress)
         {
             foreach (var row in records)
@@ -123,7 +132,7 @@ public static class PostalCodeDictionary
                 {
                     "normal" => "住所", "fallback" => "町域未特定",
                     "municipality" => row.Town.EndsWith("一円", StringComparison.Ordinal) ? "町域なし" : "市区町村の次に番地",
-                    "koaza" when row.BaseTown.Length > 0 => "大字・町域まで",
+                    "koaza" or "airport" or "facility" when row.BaseTown.Length > 0 => "大字・町域まで",
                     "kyoto" when row.BaseTown.Length > 0 => "基本住所",
                     "range" when row.BaseTown.Length > 0 => "範囲条件あり",
                     "restricted" when row.BaseTown.Length > 0 => "除外・限定条件",
