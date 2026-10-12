@@ -83,6 +83,13 @@ public enum ConversionEngine
     [Description("Microsoft IME")] System,
 }
 
+/// <summary>郵便番号の建物候補に使う階数の数字。</summary>
+public enum PostalFloorNumberWidth
+{
+    [Description("全角 (３６階)")] FullWidth,
+    [Description("半角 (36階)")] HalfWidth,
+}
+
 /// <summary>句読点の組み合わせ (Microsoft IME と同じ 4 通り)。, と . を打ったときに出す文字。</summary>
 public enum PunctuationStyle
 {
@@ -236,6 +243,22 @@ public sealed class Settings
     [Category("1. 全般"), DisplayName("変換エンジン"),
      Description("かな漢字変換に使うエンジン。「両方」は Mozc (Google 日本語入力のオープンソース版) で変換し、Mozc が使えないときは Microsoft IME で変換します。候補には両方の候補が出ます。")]
     public ConversionEngine ConversionEngine { get; set; } = ConversionEngine.Hybrid;
+
+    [Category("1. 全般"), DisplayName("郵便番号: 基本住所の候補"),
+     Description("郵便番号を変換したときに基本住所を出します。丁目・番地・除外条件は注記に保持し、同じ候補に止まると原文を確認できます。安全に分離できない町域は原文のまま出します。番号自体は最初の候補に残ります。")]
+    public bool PostalBasicAddressCandidates { get; set; } = true;
+
+    [Category("1. 全般"), DisplayName("郵便番号: 通り名＋町名の候補"),
+     Description("京都の郵便番号に、通り名・位置説明と町名をつなげた住所の候補を追加します。複数の通り名はそれぞれ選べます。結合の安全性を確認できない表記は生成しません。")]
+    public bool PostalStreetAndTownCandidates { get; set; }
+
+    [Category("1. 全般"), DisplayName("郵便番号: 通り名のみの候補"),
+     Description("京都の郵便番号に、都道府県・市区町村と通り名・位置説明の候補を追加します。町名は付けません。辞書に保存した通り名から生成し、原文も注記で確認できます。")]
+    public bool PostalStreetCandidates { get; set; }
+
+    [Category("1. 全般"), DisplayName("郵便番号: 階数の数字"),
+     Description("階別の郵便番号で、階数の数字を全角または半角にします。初期値は全角です。英字を含む建物名は半角英数字で表示し、町域の数字は変えません。地階・階層不明の番号は建物名まで出します。")]
+    public PostalFloorNumberWidth PostalFloorNumbers { get; set; } = PostalFloorNumberWidth.FullWidth;
 
     [Category("1. 全般"), DisplayName("英訳の候補"),
      Description("変換の候補の後ろに英訳も出します (複雑な → complex, complicated)。JMdict のよく使う語から。選んだ英訳は少しずつ前に出ます。")]

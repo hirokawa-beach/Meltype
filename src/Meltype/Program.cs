@@ -40,6 +40,9 @@ internal static class Program
         if (args.FirstOrDefault() == "--selftest") return SelfTest.Run(args.ElementAtOrDefault(1));
         // Meltype.exe --exit: 動いている Meltype を終了させる (インストール・アンインストール用。管理者として動いていても止められる)。
         if (args.FirstOrDefault() == "--exit") return ExitSignal.Send() ? 0 : 1;
+        // トレイにアクセスしにくいときも、実行中の版の設定を開ける。
+        var showSettings = args.FirstOrDefault() == "--settings";
+        if (showSettings && ExitSignal.SendSettings()) return 0;
         // Meltype.exe --judge-words <語の一覧> <結果>: 語ごとの自動の判定を書き出す。前の版の Meltype が、更新の前に
         // 「あなたの打ち方で変わる語」を調べるために、ダウンロードした新しい版をこれで動かす (issue #285)。
         if (args.FirstOrDefault() == "--judge-words" && args.Length >= 3) return JudgeWords(args[1], args[2]);
@@ -103,7 +106,10 @@ internal static class Program
         using (engine)
         {
             using var exitSignal = new ExitSignal();
-            Application.Run(new TrayApplicationContext(engine));
+            using var tray = new TrayApplicationContext(engine);
+            exitSignal.SettingsRequested += tray.ShowSettings;
+            if (showSettings) tray.QueueSettings();
+            Application.Run(tray);
         }
         return 0;
     }

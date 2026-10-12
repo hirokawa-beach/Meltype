@@ -15,11 +15,14 @@ internal sealed class ExitSignal : NativeWindow, IDisposable
     private const string Caption = "Meltype.ExitSignal";
     private const uint MSGFLT_ALLOW = 1;
     private static readonly uint ExitMessage = RegisterWindowMessage("Meltype.Exit");
+    private static readonly uint SettingsMessage = RegisterWindowMessage("Meltype.ShowSettings");
+    public event Action? SettingsRequested;
 
     public ExitSignal()
     {
         CreateHandle(new CreateParams { Caption = Caption });
         ChangeWindowMessageFilterEx(Handle, ExitMessage, MSGFLT_ALLOW, IntPtr.Zero);
+        ChangeWindowMessageFilterEx(Handle, SettingsMessage, MSGFLT_ALLOW, IntPtr.Zero);
     }
 
     protected override void WndProc(ref Message m)
@@ -30,6 +33,11 @@ internal sealed class ExitSignal : NativeWindow, IDisposable
             Application.Exit();
             return;
         }
+        if (SettingsMessage != 0 && m.Msg == (int)SettingsMessage)
+        {
+            SettingsRequested?.Invoke();
+            return;
+        }
         base.WndProc(ref m);
     }
 
@@ -38,6 +46,13 @@ internal sealed class ExitSignal : NativeWindow, IDisposable
     {
         var window = FindWindow(null, Caption);
         return window != IntPtr.Zero && PostMessage(window, ExitMessage, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    /// <summary>起動中の Meltype に設定画面を開くよう伝える。</summary>
+    public static bool SendSettings()
+    {
+        var window = FindWindow(null, Caption);
+        return window != IntPtr.Zero && PostMessage(window, SettingsMessage, IntPtr.Zero, IntPtr.Zero);
     }
 
     public void Dispose() => DestroyHandle();

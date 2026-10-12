@@ -212,7 +212,8 @@ internal static class CompositionTests
         public Keyboard(bool live = false, bool direct = false, ConversionHistory? history = null, IKanjiConverter? converter = null,
             Func<string, IReadOnlyList<string>>? moreCandidates = null, UserDictionary? userDictionary = null, LanguageMemory? languages = null,
             TranslationDictionary? translations = null, TranslationHistory? translationHistory = null, bool slashAsMiddleDot = false, Predictor? predictor = null,
-            Func<DateTime>? now = null, bool showTypedKeys = false, bool tabConversion = false)
+            Func<DateTime>? now = null, bool showTypedKeys = false, bool tabConversion = false,
+            Func<PostalCodeDictionary.CandidateTypes>? postalCandidateTypes = null)
         {
             Direct = direct;
             Controller = new CompositionController(Gate, Detector, converter ?? Converter, Host, new CompositionOptions
@@ -225,6 +226,7 @@ internal static class CompositionTests
                 ContextRules = Rules,
                 History = history ?? new ConversionHistory(null),
                 MoreCandidates = moreCandidates,
+                PostalCandidateTypes = postalCandidateTypes ?? (() => PostalCodeDictionary.CandidateTypes.Default),
                 UserDictionary = userDictionary,
                 Level = () => Level,
                 KanaInput = () => Kana,

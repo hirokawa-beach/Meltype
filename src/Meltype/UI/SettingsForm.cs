@@ -110,6 +110,21 @@ internal sealed class SettingsForm : Form
         RefreshProfiles();
     }
 
+    /// <summary>非表示起動で Windows が最初の Show を隠した場合も、ユーザーの要求で確実に表示する。</summary>
+    internal void ShowForUser()
+    {
+        if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+        Show();
+        // Form.Visible が true でも、STARTUPINFO の SW_HIDE により実ウィンドウが隠れることがある。
+        if (!Native.IsWindowVisible(Handle))
+        {
+            Hide();
+            Show();
+        }
+        BringToFront();
+        Activate();
+    }
+
     /// <summary>上のプロファイルの欄: 選ぶと、そのプロファイルの値を画面に読み込む。新規は今の値を写して作る。</summary>
     private Control BuildProfileBar()
     {

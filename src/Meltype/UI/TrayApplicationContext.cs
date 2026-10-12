@@ -58,6 +58,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Level = () => _engine.AppSettings.DetectionLevel,
             Engine = () => _engine.Settings.ConversionEngine,
             TranslationCandidates = () => _engine.Settings.TranslationCandidates,
+            PostalCandidateTypes = () => new(_engine.Settings.PostalBasicAddressCandidates, _engine.Settings.PostalStreetAndTownCandidates, _engine.Settings.PostalStreetCandidates, _engine.Settings.PostalFloorNumbers == PostalFloorNumberWidth.HalfWidth),
             CandidateMeanings = () => _engine.Settings.ShowCandidateMeanings,
             ShowTypedKeys = () => _engine.Settings.ShowTypedKeys,
             TabConversion = () => _engine.Settings.TabConversion,
@@ -473,17 +474,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _tray.Text = tip.Length > 63 ? tip[..63] : tip;
     }
 
-    private void ShowSettings()
+    internal void ShowSettings()
     {
-        if (_settingsForm is { IsDisposed: false })
+        if (_settingsForm is not { IsDisposed: false })
         {
-            _settingsForm.Activate();
-            return;
+            _settingsForm = new SettingsForm(_engine);
+            _settingsForm.FormClosed += (_, _) => UpdateStatus();
         }
-        _settingsForm = new SettingsForm(_engine);
-        _settingsForm.FormClosed += (_, _) => UpdateStatus();
-        _settingsForm.Show();
+        _settingsForm.ShowForUser();
     }
+
+    internal void QueueSettings() => _invoker.BeginInvoke(ShowSettings);
 
     private void ShowLearnedWords()
     {

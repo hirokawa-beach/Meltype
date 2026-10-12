@@ -1,16 +1,38 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "source": "日本郵便株式会社 住所の郵便番号（1レコード1行、UTF-8形式）",
   "source_url": "https://www.post.japanpost.jp/service/search/zipcode/download/utf/zip/utf_ken_all.zip",
   "terms_url": "https://www.post.japanpost.jp/service/search/zipcode/download/readme.html",
   "source_date": "2026-09-30",
   "source_sha256": "444881769a631d2c36c644fc041e5ce62fe65d204ff498a601641ba1e66b5955",
-  "dictionary_sha256": "2f0dafda606e7ed81a3e5d3ce855754048d5a8299be712800ac5a89e491a9c0a",
-  "compressed_bytes": 1060866,
+  "dictionary_sha256": "c914842b4e552e5de3f2a8fb0a7ee5d0d13355321826d4cecea26c1776d87cad",
+  "compressed_bytes": 1092295,
   "source_records": 124526,
   "postal_codes": 120720,
-  "address_candidates": 124525,
+  "address_records": 124525,
   "multiple_address_codes": 1338,
-  "max_candidates_per_code": 66,
-  "uncompressed_bytes": 6286603
+  "max_records_per_code": 66,
+  "uncompressed_bytes": 6977331,
+  "classification": {
+    "normal": 116126,
+    "fallback": 1870,
+    "kyoto": 258,
+    "range": 564,
+    "restricted": 617,
+    "other": 5091
+  },
+  "classification_details": {
+    "street_without_town_join": 4,
+    "range_separated": 347,
+    "direction_name_retained": 21,
+    "other_retained": 1615,
+    "restricted_separated": 602,
+    "range_retained": 217,
+    "restricted_retained": 15,
+    "building_unknown_floor_separated": 86,
+    "building_floor_separated": 3351,
+    "municipality_only": 39,
+    "kyoto_separated": 258
+  },
+  "street_descriptions": 1133
 }

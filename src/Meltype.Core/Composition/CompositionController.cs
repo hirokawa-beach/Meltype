@@ -123,6 +123,9 @@ public sealed record CompositionOptions
     /// </summary>
     public Func<string, IReadOnlyList<string>>? MoreCandidates { get; init; }
 
+    /// <summary>郵便番号から生成する候補の種類。設定変更は次の変換から反映する。</summary>
+    public Func<PostalCodeDictionary.CandidateTypes> PostalCandidateTypes { get; init; } = () => PostalCodeDictionary.CandidateTypes.Default;
+
     /// <summary>英訳の候補 (複雑な → complex)。null なら出さない。</summary>
     public TranslationDictionary? Translations { get; init; }
 
@@ -307,6 +310,7 @@ public sealed class CompositionController
         /// <summary>郵便番号の文節。分割・学習・外部エンジンの展開をしない。</summary>
         public bool IsPostalCode { get; init; }
         public IReadOnlyDictionary<string, string>? PostalNotes { get; init; }
+        public IReadOnlyDictionary<string, string?>? PostalDetails { get; init; }
 
         /// <summary>この文節の読みを打ったときの英字 (あぴ → api)。分からなければ null。</summary>
         public string? Raw { get; set; }
@@ -638,7 +642,7 @@ public sealed class CompositionController
                 // ひらがな / カタカナ キー: 押すたびに ひらがな ⇔ カタカナ (漢字・英字の状態からは、まずひらがな)
                 SetMode(_text.Mode == DisplayMode.Hiragana && !_converting ? DisplayMode.Katakana : DisplayMode.Hiragana);
                 return;
-            case VirtualKeys.Space when PostalCandidates().Count > 0:
+            case VirtualKeys.Space when PostalCandidates() is not null:
                 _spaceStartedConversion = true;
                 StartConversion();
                 return;
@@ -1090,7 +1094,7 @@ public sealed class CompositionController
     /// </summary>
     private bool TabStartsConversion()
     {
-        if (PostalCandidates().Count > 0) return true;
+        if (PostalCandidates() is not null) return true;
         // 保護区間が語の途中にあり、その後にかなが続く入力も Tab 変換しない。
         // IsProtectedInput は末尾が保護区間かだけを見るため、ここでは全区間を調べる。
         if (_text.Mode == DisplayMode.Auto && _text.ProtectedSpans().Count > 0) return false;
@@ -1228,10 +1232,10 @@ public sealed class CompositionController
     }
 
     /// <summary>番号全体の住所候補。直接入力・かな入力・保護区間は対象にしない。</summary>
-    private IReadOnlyList<PostalCodeDictionary.Address> PostalCandidates(bool preferJapanese = false) =>
+    private IReadOnlyList<PostalCodeDictionary.Address>? PostalCandidates(bool preferJapanese = false) =>
         !_text.KanaInput && (_text.Mode is DisplayMode.Auto or DisplayMode.Hiragana) &&
         !_text.HasProtectedTail && (_text.PrecedingEnglish != true || preferJapanese)
-            ? PostalCodeDictionary.Lookup(_text.Raw) : [];
+            ? PostalCodeDictionary.Find(_text.Raw, _options.PostalCandidateTypes()) : null;
 
     /// <summary>
     /// 英語区間はそのまま、日本語区間は文脈を付けて変換エンジンで文節に区切って変換する。
@@ -1241,7 +1245,7 @@ public sealed class CompositionController
     {
         _tabStartedConversion = false;
         var postal = PostalCandidates(preferJapanese);
-        if (postal.Count > 0)
+        if (postal is not null)
         {
             // 元入力を先頭に残し、未確定の番号全体を 1 文節として扱う。
             // 住所は同梱データからだけ取り、エンジンの分割・学習による古い住所を混ぜない。
@@ -1250,7 +1254,8 @@ public sealed class CompositionController
                 Raw = _text.Raw,
                 Expanded = true,
                 IsPostalCode = true,
-                PostalNotes = postal.GroupBy(a => a.Text).ToDictionary(g => g.Key, g => g.First().Note),
+                PostalNotes = postal.ToDictionary(a => a.Text, a => a.Note),
+                PostalDetails = postal.ToDictionary(a => a.Text, a => a.Detail),
             }];
             _selectedClause = 0;
             _converting = true;
@@ -1778,7 +1783,7 @@ public sealed class CompositionController
 
     /// <summary>選んでいる候補の意味: 日本語の意味 (ウィクショナリー)、無ければ英訳 (JMdict)。</summary>
     private string? CandidateMeaning(Clause clause) =>
-        _options.Meanings?.Lookup(clause.Text, clause.IsEnglish ? null : clause.Reading) ?? _options.Translations?.Meaning(clause.Text);
+        clause.PostalDetails?.GetValueOrDefault(clause.Text) ?? _options.Meanings?.Lookup(clause.Text, clause.IsEnglish ? null : clause.Reading) ?? _options.Translations?.Meaning(clause.Text);
 
     /// <summary>
     /// 候補の右に小さく出す注記: 英訳 (complex)、半角 / 全角 (同じ記号・英数字の半角と全角が両方候補にあるとき。# と ＃ は見分けにくい)。
@@ -2373,7 +2378,8 @@ public sealed class CompositionController
                 _clauses.Select(c => c.Text).ToList(),
                 _selectedClause,
                 CandidateNotes(selected),
-                _options.CandidateMeanings() ? CandidateMeaning(selected) : null,
+                // 郵便番号の条件は辞書の意味表示を OFF にしても確認できるようにする。
+                selected.PostalDetails?.GetValueOrDefault(selected.Text) ?? (_options.CandidateMeanings() ? CandidateMeaning(selected) : null),
                 MisspellingSuggestion(),
                 Typed: TypedKeys()));
         }

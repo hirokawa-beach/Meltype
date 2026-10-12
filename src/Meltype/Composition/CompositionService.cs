@@ -63,6 +63,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             Languages = Languages,
             Translations = options.Translations ?? TranslationDictionary.Load(),
             TranslationCandidates = options.TranslationCandidates,
+            PostalCandidateTypes = options.PostalCandidateTypes,
             CandidateMeanings = options.CandidateMeanings,
             ShowTypedKeys = options.ShowTypedKeys,
             TabConversion = options.TabConversion,

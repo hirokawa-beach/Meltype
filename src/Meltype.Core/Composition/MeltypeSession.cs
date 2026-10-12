@@ -165,6 +165,7 @@ public sealed class MeltypeSession
             Languages = languages,
             Translations = TranslationDictionary.Load(),
             TranslationCandidates = () => settings.TranslationCandidates,
+            PostalCandidateTypes = () => new(settings.PostalBasicAddressCandidates, settings.PostalStreetAndTownCandidates, settings.PostalStreetCandidates, settings.PostalFloorNumbers == PostalFloorNumberWidth.HalfWidth),
             TabConversion = () => settings.TabConversion,
             ContinueAfterConversion = () => settings.ContinueAfterConversion,
             Learning = () => settings.LearningEnabled,

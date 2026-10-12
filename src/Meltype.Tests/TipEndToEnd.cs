@@ -36,7 +36,11 @@ internal static class TipEndToEnd
         uint serverThreadId = 0;
         var serverThread = new Thread(() =>
         {
-            var settings = new Config.Settings { Mode = Config.InputMode.Tsf, LiveConversion = false };
+            var settings = new Config.Settings { Mode = Config.InputMode.Tsf, LiveConversion = false,
+                PostalStreetAndTownCandidates = Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_VARIANTS") == "1",
+                PostalFloorNumbers = Environment.GetEnvironmentVariable("MELTYPE_E2E_HALF_FLOOR") == "1" ? Config.PostalFloorNumberWidth.HalfWidth : Config.PostalFloorNumberWidth.FullWidth,
+                PostalStreetCandidates = Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_VARIANTS") == "1",
+            };
             var invoker = new Control();
             invoker.CreateControl();
             serverInvoker = invoker;
@@ -48,6 +52,7 @@ internal static class TipEndToEnd
                 Languages = new Composition.LanguageMemory(null),
                 TranslationHistory = new Composition.TranslationHistory(null),
                 Engine = () => Config.ConversionEngine.System,
+                PostalCandidateTypes = () => new(settings.PostalBasicAddressCandidates, settings.PostalStreetAndTownCandidates, settings.PostalStreetCandidates, settings.PostalFloorNumbers == Config.PostalFloorNumberWidth.HalfWidth),
             });
             using var server = new Tip.TipServer(invoker, service, () => settings);
             server.Start();
@@ -98,21 +103,38 @@ internal static class TipEndToEnd
 
                 if (Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_ONLY") == "1")
                 {
-                    async Task Postal(string input, string name)
+                    async Task Postal(string input, string name, int candidate = 1)
                     {
                         box.Clear();
                         await Task.Delay(200);
                         TypeKeys(input + " ");
                         await Task.Delay(500);
                         if (ShotDirectory is { } shot) Capture(form, Path.Combine(shot, name + ".png"));
-                        TypeKeys("↓\n");
+                        TypeKeys(new string('↓', candidate) + "\n");
                         await Task.Delay(800);
-                        results.Add((name, Composition.PostalCodeDictionary.Lookup(input).Single().Text, box.Text));
+                        var types = Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_VARIANTS") == "1"
+                            ? new Composition.PostalCodeDictionary.CandidateTypes(true, true, true)
+                            : Composition.PostalCodeDictionary.CandidateTypes.Default;
+                        types = types with { HalfWidthFloorNumbers = Environment.GetEnvironmentVariable("MELTYPE_E2E_HALF_FLOOR") == "1" };
+                        results.Add((name, Composition.PostalCodeDictionary.Lookup(input, types)[candidate - 1].Text, box.Text));
                     }
                     await Postal("1000001", "postal-digits-tokyo");
                     await Postal("100-0001", "postal-hyphen-tokyo");
                     await Postal("6028368", "postal-digits-kyoto");
                     await Postal("602-8368", "postal-hyphen-kyoto");
+                    await Postal("0600001", "postal-range");
+                    await Postal("0030022", "postal-direction-retained");
+                    await Postal("1006001", "postal-building-first-floor");
+                    await Postal("1006090", "postal-building-unknown-floor");
+                    await Postal("1006036", "postal-building-floor-36");
+                    await Postal("1000013", "postal-building-exclusion");
+                    await Postal("1416001", "postal-building-english");
+                    await Postal("6308037", "postal-long-raw-retained");
+                    if (Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_VARIANTS") == "1")
+                    {
+                        await Postal("6028368", "postal-street-town", 2);
+                        await Postal("6028368", "postal-street-only-last-page", 43);
+                    }
                     return;
                 }
 
