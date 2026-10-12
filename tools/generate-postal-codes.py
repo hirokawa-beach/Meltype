@@ -19,7 +19,7 @@ import zipfile
 
 SOURCE_URL = "https://www.post.japanpost.jp/service/search/zipcode/download/utf/zip/utf_ken_all.zip"
 TERMS_URL = "https://www.post.japanpost.jp/service/search/zipcode/download/readme.html"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 LABELS = {
     "normal": "通常の町域", "fallback": "以下に掲載がない場合", "kyoto": "京都の通り名・位置説明",
     "range": "丁目・番地などの範囲指定", "restricted": "除外・限定条件", "other": "その他の特殊表記",
@@ -126,6 +126,90 @@ def building_parts(rows):
     return result
 
 
+NAME = re.compile(r"[一-鿿々ヶケぁ-ゖァ-ヺー]+")
+NON_NAME = re.compile(r"丁目|番地|地割|その他|場合|一円|全域|通称|通り|地内|地区|国有林|施設|農場|牧場|事務所|団地|温泉|神社|から|まで|及び|および|又は|または|含む|除く|区域|付近|周辺|俗称|限る|以内|以降|以前|号$|棟|階|区$")
+
+
+FOREST_BLOCK = re.compile(r"(?P<name>[一-鿿々ヶケぁ-ゖァ-ヺー]+国有林)(?:第)?[０-９0-9]+(?:林班|班)")
+IGNORED = re.compile(r"\[[^\[\]]*\]|［[^［］]*］|〔[^〔〕]*〕")
+
+
+def koaza_tokens(body):
+    # 角括弧内の地名・施設・数字は候補に使わない。入れ子も内側から消す。
+    while True:
+        cleaned = IGNORED.sub("", body)
+        if cleaned == body: break
+        body = cleaned
+    if any(c in body for c in "[]［］〔〕"): return None
+    tokens, start, quoted = [], 0, False
+    for i, c in enumerate(body):
+        if c == "「":
+            if quoted: return None
+            quoted = True
+        elif c == "」":
+            if not quoted: return None
+            quoted = False
+        elif c == "、" and not quoted:
+            tokens.append(body[start:i]); start = i + 1
+    if quoted: return None
+    tokens.append(body[start:])
+    return tokens
+
+
+def koaza_name(token):
+    """番地の末尾を落とす。未知の条件は None、数字だけの続きは空文字。"""
+    if not token: return None
+    if FOREST_BLOCK.fullmatch(token): return token  # 林班は番地と分け、番号・単位も候補に残す。
+    parts = re.split(r"「([^「」]*)」", token)
+    name = ""
+    for i, part in enumerate(parts):
+        if not part: continue
+        if i % 2:
+            # 数字を含む引用は番地・除外等の条件。挿入せず原文詳細だけに残す。
+            if re.search(r"[０-９0-9]", part):
+                if not re.fullmatch(r"[０-９0-9、・〜～－−\-番地丁目第号のを除く以外以上以下未満に限るのみ及びからまで\s]+", part): return None
+                continue
+            if not NAME.fullmatch(part) or re.search(r"その他|除く|以外|のみ|限る|場合|範囲|区域|以上|以下|未満", part): return None
+            if not name: return None  # 数字だけの前置きにある通称を小字と断定しない。
+            name += " " + part
+            continue
+        number = re.search(r"[０-９0-9]", part)
+        if number:
+            prefix, tail = part[:number.start()], part[number.start():]
+            if not SAFE_RANGE.fullmatch(tail): return None
+            part = prefix
+        if not part: continue
+        if not NAME.fullmatch(part) or NON_NAME.search(part) or part in ("東", "西", "南", "北", "字", "大字", "小字", "第"): return None
+        # 引用の後に未知の説明が続く場合は勝手に結合しない。
+        if i > 0: return None
+        name = part
+    return name
+
+
+def koaza_parts(row):
+    """小字起番フラグ、または名前に付いた引用を手掛かりに、全列挙を確認する。"""
+    kind, _, _ = classify(*row[6:9])
+    if kind not in ("other", "range", "restricted"): return None
+    outer = OUTER.fullmatch(row[8])
+    if not outer: return None
+    town, body = outer["town"], outer["wide"] or outer["ascii"]
+    if row[10] != "1" and "「" not in body and not FOREST_BLOCK.search(body): return None
+    if not NAME.fullmatch(town) or RANGE.search(town): return None
+    tokens = koaza_tokens(body)
+    if tokens is None: return None
+    names = []
+    for token in tokens:
+        name = koaza_name(token)
+        if name is None: return None
+        if name and name not in names: names.append(name)
+    if not names: return None
+    # 読み仮名・同名の大字の区別と思われる説明を連結しない。
+    if len(names) == 1 and (re.fullmatch(r"[ァ-ヺー]+", names[0]) or names[0] != town and names[0].endswith(town)): return None
+    # フラグのない表記は、名前付き引用または明記された国有林の区画番号を確認する。
+    if row[10] != "1" and not any(" " in n for n in names) and not FOREST_BLOCK.search(body): return None
+    return town, names
+
+
 def analyze(rows):
     counts = Counter({k: 0 for k in LABELS})
     examples = defaultdict(list)
@@ -138,13 +222,17 @@ def analyze(rows):
         counts[category] += 1
         if len(examples[category]) < 5:
             examples[category].append({"code": row[2], "region": row[6] + row[7], "town": row[8], "base_town": base, "street_count": len(paths)})
-        if tuple(row[6:9]) in buildings:
+        small = koaza_parts(row)
+        if small:
+            subtypes["koaza_separated"] += 1
+            subtypes["koaza_names"] += len(small[1])
+        elif tuple(row[6:9]) in buildings:
             parts = buildings[tuple(row[6:9])]
             subtypes["building_floor_separated" if parts[2] else "building_unknown_floor_separated"] += 1
         elif kind == "municipality": subtypes["municipality_only"] += 1
         elif kind == "other" and re.search(r"階|地階", row[8]): subtypes["building_floor_retained"] += 1
         elif kind == "other" and re.fullmatch(r".+[（(][東西南北][）)]", row[8]): subtypes["direction_name_retained"] += 1
-        if tuple(row[6:9]) in buildings:
+        if small or tuple(row[6:9]) in buildings:
             pass
         elif base:
             subtypes[kind + "_separated"] += 1
@@ -164,10 +252,13 @@ def build_dictionary(archive):
         kind, base, streets = classify(*row[6:9])
         paths = json.dumps(streets, ensure_ascii=False, separators=(",", ":")) if streets else ""
         building = buildings.get(tuple(row[6:9]))
+        small = koaza_parts(row)
         if building: kind = "building"
+        elif small: kind, base = "koaza", small[0]
         structured = json.dumps(building, ensure_ascii=False, separators=(",", ":")) if building else ""
-        # 7 列: 番号、都道府県+市区町村、町域原文、種別、安全に分離した町名、通り名+結合可否、建物の町域+名称+階数。
-        fields = (row[6] + row[7], row[8], kind, base, paths, structured)
+        koaza = json.dumps(small[1], ensure_ascii=False, separators=(",", ":")) if small else ""
+        # 8 列: 番号、都道府県+市区町村、町域原文、種別、安全に分離した町名、通り名+結合可否、建物の町域+名称+階数、小字の配列。
+        fields = (row[6] + row[7], row[8], kind, base, paths, structured, koaza)
         entries.setdefault(row[2], set()).add(fields)
     lines = [code + "\t" + "\t".join(fields) + "\n" for code in sorted(entries) for fields in sorted(entries[code])]
     payload = "".join(lines).encode("utf-8")

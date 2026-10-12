@@ -256,6 +256,10 @@ public sealed class Settings
      Description("京都の郵便番号に、都道府県・市区町村と通り名・位置説明の候補を追加します。町名は付けません。辞書に保存した通り名から生成し、原文も注記で確認できます。")]
     public bool PostalStreetCandidates { get; set; }
 
+    [Category("1. 全般"), DisplayName("郵便番号: 小字込みの候補"),
+     Description("大字・町域の後ろに、括弧内の小字をつなげた候補を出します（例: 桧原秋元）。初期値は ON で、小字の候補だけを出します。OFF にすると大字・町域までを出します。小字に付いた番地と角括弧内の説明を省き、かぎ括弧内の地名は半角空白でつなぎます。元の番地・条件・説明は詳細に保持し、安全に分離できない表記は原文のまま出します。原文にない「大字」「字」は補いません。")]
+    public bool PostalKoazaCandidates { get; set; } = true;
+
     [Category("1. 全般"), DisplayName("郵便番号: 階数の数字"),
      Description("階別の郵便番号で、階数の数字を全角または半角にします。初期値は全角です。英字を含む建物名は半角英数字で表示し、町域の数字は変えません。地階・階層不明の番号は建物名まで出します。")]
     public PostalFloorNumberWidth PostalFloorNumbers { get; set; } = PostalFloorNumberWidth.FullWidth;

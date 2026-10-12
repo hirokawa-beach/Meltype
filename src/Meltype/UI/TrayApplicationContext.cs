@@ -58,7 +58,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Level = () => _engine.AppSettings.DetectionLevel,
             Engine = () => _engine.Settings.ConversionEngine,
             TranslationCandidates = () => _engine.Settings.TranslationCandidates,
-            PostalCandidateTypes = () => new(_engine.Settings.PostalBasicAddressCandidates, _engine.Settings.PostalStreetAndTownCandidates, _engine.Settings.PostalStreetCandidates, _engine.Settings.PostalFloorNumbers == PostalFloorNumberWidth.HalfWidth),
+            PostalCandidateTypes = () => new(_engine.Settings.PostalBasicAddressCandidates, _engine.Settings.PostalStreetAndTownCandidates, _engine.Settings.PostalStreetCandidates, _engine.Settings.PostalFloorNumbers == PostalFloorNumberWidth.HalfWidth, _engine.Settings.PostalKoazaCandidates),
             CandidateMeanings = () => _engine.Settings.ShowCandidateMeanings,
             ShowTypedKeys = () => _engine.Settings.ShowTypedKeys,
             TabConversion = () => _engine.Settings.TabConversion,

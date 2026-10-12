@@ -11,13 +11,13 @@ namespace Meltype.Composition;
 public static class PostalCodeDictionary
 {
     public sealed record Address(string Text, string Note, string? Detail = null);
-    public readonly record struct CandidateTypes(bool BasicAddress, bool StreetAndTown, bool StreetOnly, bool HalfWidthFloorNumbers = false)
+    public readonly record struct CandidateTypes(bool BasicAddress, bool StreetAndTown, bool StreetOnly, bool HalfWidthFloorNumbers = false, bool Koaza = false)
     {
-        public static CandidateTypes Default => new(true, false, false);
+        public static CandidateTypes Default => new(true, false, false, false, true);
     }
     internal sealed record Street(string Text, bool AppendTown);
     internal sealed record Building(string Town, string Name, string Floor);
-    internal sealed record Record(string Region, string Town, string Kind, string BaseTown, IReadOnlyList<Street> Streets, Building? Building = null);
+    internal sealed record Record(string Region, string Town, string Kind, string BaseTown, IReadOnlyList<Street> Streets, Building? Building = null, IReadOnlyList<string>? Koaza = null);
     private sealed record Index(byte[] Text, int[] Codes, int[] Starts, int[] Lines);
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private static readonly Lazy<Index> Entries = new(Load);
@@ -68,7 +68,13 @@ public static class PostalCodeDictionary
                 using var json = JsonDocument.Parse(fields[6]);
                 building = new Building(json.RootElement[0].GetString()!, json.RootElement[1].GetString()!, json.RootElement[2].GetString()!);
             }
-            records[row - start] = new Record(fields[1], fields[2], fields[3], fields[4], streets, building);
+            List<string>? koaza = null;
+            if (fields[7].Length > 0)
+            {
+                using var json = JsonDocument.Parse(fields[7]);
+                koaza = json.RootElement.EnumerateArray().Select(n => n.GetString()!).ToList();
+            }
+            records[row - start] = new Record(fields[1], fields[2], fields[3], fields[4], streets, building, koaza);
         }
         return records;
     }
@@ -90,11 +96,19 @@ public static class PostalCodeDictionary
             if (detail is not null && !(old.Detail?.Split("\n\n").Contains(detail) ?? false))
                 result[index] = old with { Note = old.Note == note ? note : "条件・複数表記", Detail = old.Detail is null ? detail : old.Detail + "\n\n" + detail };
         }
-        // 基本住所を全件先に並べ、その後に通り名を並べる。郵便番号自体は呼び出し側が先頭に残す。
+        static bool HasKoaza(Record row) => row.Kind == "koaza" && row.BaseTown.Length > 0 && row.Koaza is { Count: > 0 };
+        if (types.Koaza)
+        {
+            foreach (var row in records.Where(HasKoaza))
+            foreach (var name in row.Koaza!)
+                Add(row.Region + row.BaseTown + name, "小字込み", "選択した小字: " + name + "\n町域原文: " + row.Town);
+        }
+        // 小字がある行は ON なら小字だけ、OFF なら大字までを出す。郵便番号自体は呼び出し側が先頭に残す。
         if (types.BasicAddress)
         {
             foreach (var row in records)
             {
+                if (types.Koaza && HasKoaza(row)) continue;
                 if (row.Building is { } building)
                 {
                     var floor = building.Floor;
@@ -109,6 +123,7 @@ public static class PostalCodeDictionary
                 {
                     "normal" => "住所", "fallback" => "町域未特定",
                     "municipality" => row.Town.EndsWith("一円", StringComparison.Ordinal) ? "町域なし" : "市区町村の次に番地",
+                    "koaza" when row.BaseTown.Length > 0 => "大字・町域まで",
                     "kyoto" when row.BaseTown.Length > 0 => "基本住所",
                     "range" when row.BaseTown.Length > 0 => "範囲条件あり",
                     "restricted" when row.BaseTown.Length > 0 => "除外・限定条件",
@@ -160,7 +175,7 @@ public static class PostalCodeDictionary
                 }
                 var tabs = 0;
                 foreach (var character in line) if (character == '\t') tabs++;
-                if (tabs != 6 || code < previous) throw new InvalidDataException("郵便番号辞書の形式・並び順が正しくありません (schema 3)。");
+                if (tabs != 7 || code < previous) throw new InvalidDataException("郵便番号辞書の形式・並び順が正しくありません (schema 4)。");
                 if (code != previous)
                 {
                     codes.Add(code);

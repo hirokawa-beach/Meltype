@@ -23,8 +23,8 @@ def archive(rows):
     return result.getvalue()
 
 
-def row(code, town, prefecture="東京都", city="千代田区"):
-    return ["13101", "100", code, "トウキョウト", "チヨダク", "", prefecture, city, town, "0", "0", "0", "0", "0", "0"]
+def row(code, town, prefecture="東京都", city="千代田区", koaza=False):
+    return ["13101", "100", code, "トウキョウト", "チヨダク", "", prefecture, city, town, "0", "1" if koaza else "0", "0", "0", "0", "0"]
 
 
 def records(rows):
@@ -62,7 +62,7 @@ class PostalGeneratorTests(unittest.TestCase):
         town = "北町（丸太町通大宮東入、位置不明の説明）"
         data, _ = records([row("6028368", town, "京都府", "京都市上京区")])
         self.assertEqual(data[0][2], town)
-        self.assertEqual(data[0][4:], ["", "", ""])
+        self.assertEqual(data[0][4:], ["", "", "", ""])
 
     def test_ranges_and_exclusions_are_not_streets(self):
         for town, category, base in [("大通西（１〜１９丁目）", "range", "大通西"), ("藤野（４００、４００−２番地）", "range", "藤野"), ("曙町（１丁目を除く）", "restricted", "曙町"), ("常盤（その他）", "restricted", "常盤")]:
@@ -77,7 +77,7 @@ class PostalGeneratorTests(unittest.TestCase):
             with self.subTest(town=town):
                 data, _ = records([row("1000001", town)])
                 self.assertEqual(data[0][2], town)
-                self.assertEqual(data[0][4:], ["", "", ""])
+                self.assertEqual(data[0][4:], ["", "", "", ""])
 
     def test_same_town_different_codes_and_conditions_are_not_merged(self):
         data, stats = records([row("0600001", "北一条西（１〜１９丁目）"), row("0640821", "北一条西（２０〜２８丁目）"), row("0600001", "北一条西（３０丁目）")])
@@ -123,6 +123,66 @@ class PostalGeneratorTests(unittest.TestCase):
         # 地域が違う同名町域を利用しない。
         data, _ = records([row("1000000", "甲町", city="甲区"), row("1000001", "甲町ビル（１階）", city="乙区")])
         self.assertEqual(data[1][6], "")
+
+    def test_koaza_flag_and_names_keep_source_and_order(self):
+        source = [row("9692701", "桧原（秋元、裏磐梯、簗部沢山、秋元）", koaza=True), row("9660401", "桧原（雄子沢）", koaza=True)]
+        data, stats = records(source)
+        by_code = {r[0]: r for r in data}
+        self.assertEqual(by_code["9692701"][2], source[0][8])
+        self.assertEqual(by_code["9692701"][3:5], ["koaza", "桧原"])
+        self.assertEqual(json.loads(by_code["9692701"][7]), ["秋元", "裏磐梯", "簗部沢山"])
+        self.assertEqual(json.loads(by_code["9660401"][7]), ["雄子沢"])
+        self.assertEqual(stats["classification_details"]["koaza_separated"], 2)
+        self.assertEqual(stats["classification_details"]["koaza_names"], 4)
+        first, a = generator.build_dictionary(archive(source))
+        second, b = generator.build_dictionary(archive(source[::-1]))
+        self.assertEqual(first, second)
+        self.assertEqual(a, b)
+
+    def test_koaza_requires_flag_and_entire_list_to_be_safe(self):
+        towns = ["桧原（秋元、その他）", "桧原（秋元、裏磐梯を除く）", "桧原（秋元、）", "桧原（秋元（南）、裏磐梯）", "桧原（秋元、地区）", "種市第１地割〜第３地割（八木南町、八木北町）", "南郷通（南）", "共和町（キョウワマチ）", "大山（小牧大山）", "関和久（八雲神社）", "桧原（秋元、字１２）", "桧原（秋元から裏磐梯まで）", "桧原（秋元及び裏磐梯）"]
+        for town in towns:
+            with self.subTest(town=town):
+                data, _ = records([row("1000001", town, koaza=True)])
+                self.assertEqual(data[0][7], "")
+                self.assertEqual(data[0][2], town)
+        data, _ = records([row("1000001", "桧原（秋元、裏磐梯）")])
+        self.assertEqual(data[0][7], "")
+        data, _ = records([row("6028368", "北町（上の下立売通天神道西入上る、上の下立売通御前西入）", "京都府", "京都市上京区", koaza=True)])
+        self.assertEqual(data[0][3], "kyoto")
+        self.assertEqual(data[0][7], "")
+
+    def test_koaza_numbers_and_bracket_variants_are_ignored(self):
+        for bracket in ["[施設、説明]", "［施設、説明］", "〔施設、説明〕", "[施設[説明]]"]:
+            town = "毛萱（前川原２３２〜２４４、３１１、３１２、３３７〜８６２番地" + bracket + "）"
+            data, _ = records([row("9790622", town, koaza=True)])
+            self.assertEqual(json.loads(data[0][7]), ["前川原"])
+            self.assertEqual(data[0][2], town)
+        data, _ = records([row("1000001", "甲（乙１番地、乙２番地、丙５〜１０番地）", koaza=True)])
+        self.assertEqual(json.loads(data[0][7]), ["乙", "丙"])
+        for town in ["甲（１２３、４５６番地）", "甲（乙１番地不明）", "甲（乙[説明）", "甲（乙〔説明）", "甲（乙１番地丙）"]:
+            data, _ = records([row("1000001", town, koaza=True)])
+            self.assertEqual(data[0][7], "")
+
+    def test_koaza_quotes_use_spaces_and_keep_numeric_conditions_in_source(self):
+        data, _ = records([row("3703311", "岡崎（烏帽子「榛名湖畔」）")])
+        self.assertEqual(json.loads(data[0][7]), ["烏帽子 榛名湖畔"])
+        data, _ = records([row("1000001", "甲（乙「１番地、２番地を除く」、丙「湖畔」）", koaza=True)])
+        self.assertEqual(json.loads(data[0][7]), ["乙", "丙 湖畔"])
+        self.assertTrue("２番地を除く" in data[0][2])
+        for town in ["甲（乙「湖畔）", "甲（乙「湖畔「説明」」）", "甲（乙「１番地不明」）", "甲（１２３番地「峠」）"]:
+            data, _ = records([row("1000001", town, koaza=True)])
+            self.assertEqual(data[0][7], "")
+
+    def test_forest_block_number_and_name_are_preserved(self):
+        source = [row("3703321", "泉沢（烏帽子「榛名湖畔」、烏帽子国有林７７林班）"), row("9492141", "関山（熊堂山、妙高山国有林第２８班）")]
+        data, _ = records(source)
+        self.assertEqual(json.loads(data[0][7]), ["烏帽子 榛名湖畔", "烏帽子国有林７７林班"])
+        self.assertEqual(json.loads(data[1][7]), ["熊堂山", "妙高山国有林第２８班"])
+        self.assertEqual(data[0][2], source[0][8])
+        for town in ["泉沢（烏帽子「榛名湖畔」、国有林の未確認な説明）", "関山（熊堂山、妙高山国有林第２８班の北側）"]:
+            data, _ = records([row("1000001", town)])
+            self.assertEqual(data[0][7], "")
 
     def test_invalid_records_and_empty_data_are_rejected(self):
         for rows in ([], [row("100000", "千代田")], [row("１０００００１", "千代田")], [["1000001"]], [row("1000001", "町\n域")]):

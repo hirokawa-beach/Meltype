@@ -38,6 +38,7 @@ internal static class TipEndToEnd
         {
             var settings = new Config.Settings { Mode = Config.InputMode.Tsf, LiveConversion = false,
                 PostalStreetAndTownCandidates = Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_VARIANTS") == "1",
+                PostalKoazaCandidates = Environment.GetEnvironmentVariable("MELTYPE_E2E_KOAZA") != "0",
                 PostalFloorNumbers = Environment.GetEnvironmentVariable("MELTYPE_E2E_HALF_FLOOR") == "1" ? Config.PostalFloorNumberWidth.HalfWidth : Config.PostalFloorNumberWidth.FullWidth,
                 PostalStreetCandidates = Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_VARIANTS") == "1",
             };
@@ -52,7 +53,7 @@ internal static class TipEndToEnd
                 Languages = new Composition.LanguageMemory(null),
                 TranslationHistory = new Composition.TranslationHistory(null),
                 Engine = () => Config.ConversionEngine.System,
-                PostalCandidateTypes = () => new(settings.PostalBasicAddressCandidates, settings.PostalStreetAndTownCandidates, settings.PostalStreetCandidates, settings.PostalFloorNumbers == Config.PostalFloorNumberWidth.HalfWidth),
+                PostalCandidateTypes = () => new(settings.PostalBasicAddressCandidates, settings.PostalStreetAndTownCandidates, settings.PostalStreetCandidates, settings.PostalFloorNumbers == Config.PostalFloorNumberWidth.HalfWidth, settings.PostalKoazaCandidates),
             });
             using var server = new Tip.TipServer(invoker, service, () => settings);
             server.Start();
@@ -115,7 +116,7 @@ internal static class TipEndToEnd
                         var types = Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_VARIANTS") == "1"
                             ? new Composition.PostalCodeDictionary.CandidateTypes(true, true, true)
                             : Composition.PostalCodeDictionary.CandidateTypes.Default;
-                        types = types with { HalfWidthFloorNumbers = Environment.GetEnvironmentVariable("MELTYPE_E2E_HALF_FLOOR") == "1" };
+                        types = types with { Koaza = Environment.GetEnvironmentVariable("MELTYPE_E2E_KOAZA") != "0", HalfWidthFloorNumbers = Environment.GetEnvironmentVariable("MELTYPE_E2E_HALF_FLOOR") == "1" };
                         results.Add((name, Composition.PostalCodeDictionary.Lookup(input, types)[candidate - 1].Text, box.Text));
                     }
                     await Postal("1000001", "postal-digits-tokyo");
@@ -125,6 +126,14 @@ internal static class TipEndToEnd
                     await Postal("0600001", "postal-range");
                     await Postal("0030022", "postal-direction-retained");
                     await Postal("1006001", "postal-building-first-floor");
+                    await Postal("9692701", "postal-koaza-default");
+                    if (Environment.GetEnvironmentVariable("MELTYPE_E2E_KOAZA") != "0")
+                    {
+                        await Postal("9692701", "postal-koaza-first", 1);
+                        await Postal("9692701", "postal-koaza-last", 17);
+                    }
+                    await Postal("9790622", "postal-koaza-number-brackets");
+                    await Postal("3703311", "postal-koaza-quoted-name");
                     await Postal("1006090", "postal-building-unknown-floor");
                     await Postal("1006036", "postal-building-floor-36");
                     await Postal("1000013", "postal-building-exclusion");
