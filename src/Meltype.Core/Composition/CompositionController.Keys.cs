@@ -191,7 +191,7 @@ public sealed partial class CompositionController
                 // (日本語の部分は、ライブ変換が ON なら漢字にして、OFF なら見えているかなのまま確定)。
                 // 数字だけ (1、12) は、前が英文なら確定して空白 (I have 2 cats)。それ以外は変換して ① 一 Ⅰ などの候補を出す。
                 // 打った英字全体を読みとして登録した語 (ユーザー辞書の zh → ←、略入力の ast → 明日) があれば、英語と判定しても変換する
-                if (HasRegisteredReading())
+                if (PostalCodeConversion.Matches(_text, _services.DirectMode()) || HasRegisteredReading())
                 {
                     _spaceStartedConversion = true;
                     StartConversion();
@@ -574,6 +574,7 @@ public sealed partial class CompositionController
     /// </summary>
     private bool TabStartsConversion()
     {
+        if (PostalCodeConversion.Matches(_text, _services.DirectMode())) return true;
         // 保護区間が語の途中にあり、その後にかなが続く入力も Tab 変換しない。
         // IsProtectedInput は末尾が保護区間かだけを見るため、ここでは全区間を調べる。
         if (_text.Mode == DisplayMode.Auto && _text.ProtectedSpans().Count > 0) return false;

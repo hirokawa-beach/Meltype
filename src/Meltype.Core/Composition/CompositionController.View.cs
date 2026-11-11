@@ -62,11 +62,12 @@ public sealed partial class CompositionController
                 selected.Candidates,
                 selected.Index,
                 true,
-                (zenzai ? "Zenzai · " : "") + "←→ 文節　Space/↓ 候補　1〜9 選択　Shift+←→ 区切り　Enter 確定　Esc 戻る",
+                selected.Details is not null ? "Space/↓ 候補　1〜9 選択　Enter 確定　Esc 戻る"
+                    : (zenzai ? "Zenzai · " : "") + "←→ 文節　Space/↓ 候補　1〜9 選択　Shift+←→ 区切り　Enter 確定　Esc 戻る",
                 _clauses.Select(c => c.Text).ToList(),
                 _selectedClause,
                 CandidateNotes(selected),
-                _settings().ShowCandidateMeanings ? CandidateMeaning(selected) : null,
+                selected.Details?.GetValueOrDefault(selected.Text) ?? (_settings().ShowCandidateMeanings ? CandidateMeaning(selected) : null),
                 MisspellingSuggestion(),
                 Typed: TypedKeys(),
                 Committed: string.Concat(_clauses.Select(c => c.Text)), ContextHint: zenzai ? "Zenzai" : null));

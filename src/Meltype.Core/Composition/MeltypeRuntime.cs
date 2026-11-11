@@ -27,6 +27,7 @@ public sealed class MeltypeRuntime : IDisposable
     /// <param name="nowPlaying">再生中の曲を OS から読み始める (テストでは読まない)。</param>
     public MeltypeRuntime(string dataDirectory, IWordChecker? wordChecker = null, bool nowPlaying = false)
     {
+        PostalCodeDictionary.WarmUp();
         DataDirectory = dataDirectory;
         Directory.CreateDirectory(dataDirectory);
         _userDirectory = Path.Combine(dataDirectory, "dictionaries");

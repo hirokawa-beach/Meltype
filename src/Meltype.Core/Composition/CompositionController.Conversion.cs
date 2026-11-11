@@ -93,7 +93,7 @@ public sealed partial class CompositionController
         _clausesEdited = false;
         _tabStartedConversion = false;
         var segments = _text.ConversionSegments();
-        var utility = Utilities(segments);
+        var utility = Utilities(segments, preferJapanese);
         if (utility is { Placement: UtilityPlacement.Replace })
         {
             var fixedClause = new Clause(utility.Reading ?? _text.Raw, utility.Reading is null, [.. utility.Candidates])
@@ -102,6 +102,7 @@ public sealed partial class CompositionController
                 Expanded = true,
                 Fixed = true,
                 Notes = utility.Notes,
+                Details = utility.Details,
             };
             fixedClause.NotLearned.UnionWith(utility.NotLearned);
             // 続けて入力する前の選択だけを復元し、候補の順 (注記と同じ順) は変えない。
@@ -190,11 +191,11 @@ public sealed partial class CompositionController
     }
 
     /// <summary>入力の全体に一致したユーティリティ変換の候補。一致しなければ null。</summary>
-    private UtilityCandidates? Utilities(IReadOnlyList<CompositionSegment> segments)
+    private UtilityCandidates? Utilities(IReadOnlyList<CompositionSegment> segments, bool preferJapanese)
     {
         var reading = segments is [{ IsEnglish: false, Kana.Length: > 0 } only] ? only.Kana : null;
         var context = new UtilityContext(_settings(), _services.Now(), _services.UtcNow(), _services.LocalTimeZone(), Clipboard, NowPlaying, _services.GitHubTitles());
-        return UtilityConversions.Convert(new UtilityInput(_text, reading, _services.DirectMode(), context));
+        return UtilityConversions.Convert(new UtilityInput(_text, reading, _services.DirectMode(), context, preferJapanese));
     }
 
     /// <summary>

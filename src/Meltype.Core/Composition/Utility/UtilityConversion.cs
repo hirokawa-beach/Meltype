@@ -19,7 +19,7 @@ internal interface IUtilityConversion
 /// 変換を始めたときの入力。Reading は入力の全体が日本語の区間 1 つのときの読み (それ以外は null)。
 /// 打った英字は Text.Raw (かな入力では物理キーの表記)。
 /// </summary>
-internal sealed record UtilityInput(CompositionText Text, string? Reading, bool Direct, UtilityContext Context);
+internal sealed record UtilityInput(CompositionText Text, string? Reading, bool Direct, UtilityContext Context, bool PreferJapanese = false);
 
 /// <summary>変換を始めたときの設定と、候補に使う外の値。</summary>
 internal sealed record UtilityContext(
@@ -58,6 +58,12 @@ internal sealed record UtilityCandidates(IReadOnlyList<string> Candidates, Utili
 
     public IReadOnlyList<CandidateNote>? Notes { get; init; }
 
+    /// <summary>候補の意味表示にかかわらず確認できる、候補ごとの詳細。</summary>
+    public IReadOnlyDictionary<string, string>? Details { get; init; }
+
+    /// <summary>この変換が一致したら、ほかのユーティリティ変換の候補を混ぜない。</summary>
+    public bool Exclusive { get; init; }
+
     /// <summary>選んだら学習してよいか。時刻・設定・外の値で変わらない候補 (漢数字) だけ true にする。</summary>
     public bool Learnable { get; init; }
 
@@ -74,6 +80,7 @@ internal static class UtilityConversions
     /// <summary>ユーティリティ変換の一覧。いくつかが一致したら、この順に候補を並べる。</summary>
     internal static readonly IUtilityConversion[] All =
     [
+        new PostalCodeConversion(),
         new BracketConversion(),
         new CalculatorConversion(),
         new SlashDateConversion(),
@@ -92,7 +99,13 @@ internal static class UtilityConversions
     /// <summary>一致したすべての変換の候補。1 つでも Replace なら Replace にする。どれも一致しなければ null。</summary>
     internal static UtilityCandidates? Convert(UtilityInput input)
     {
-        var matches = All.Select(c => c.Convert(input)).OfType<UtilityCandidates>().Where(m => m.Candidates.Count > 0).ToList();
+        var matches = new List<UtilityCandidates>();
+        foreach (var conversion in All)
+        {
+            if (conversion.Convert(input) is not { Candidates.Count: > 0 } match) continue;
+            if (match.Exclusive) return match;
+            matches.Add(match);
+        }
         if (matches.Count == 0) return null;
         if (matches is [var only]) return only;
         var replace = matches.FirstOrDefault(m => m.Placement == UtilityPlacement.Replace);

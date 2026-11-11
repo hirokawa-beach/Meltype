@@ -132,6 +132,14 @@ Windows 版は、同梱の Mozc と Microsoft IME で変換します。設定の
 
 <br>
 
+### 郵便番号から住所を入力する
+
+Windows の動作モードが「Meltype IME」の場合は、試す入力欄で Win＋Space を押し、入力方式に「Meltype IME」を選んでから日本語入力にしてください。
+
+日本語入力中に `1000001` または `100-0001` と打って Space を押すと、`東京都千代田区千代田` を候補から選べます。最初の候補は番号のままで、Enter だけなら番号を確定します。同梱データで検索するため、オフラインで使えます。[詳しい使い方とデータの更新](POSTAL-CODES.md)を参照してください。
+
+<br>
+
 <a name="今日の日付今の時刻"></a>
 <img src="images/headings/usage/08.svg" alt="今日の日付・今の時刻" height="53"><br>
 

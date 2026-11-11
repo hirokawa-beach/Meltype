@@ -157,6 +157,8 @@ public sealed partial class CompositionController
         /// <summary>候補と同じ順・件数の注記 (ユーティリティ変換が決めたもの)。null なら候補から決める (<see cref="CandidateNotes"/>)。</summary>
         public IReadOnlyList<CandidateNote>? Notes { get; init; }
 
+        public IReadOnlyDictionary<string, string>? Details { get; init; }
+
         /// <summary>候補のうち、選んでも学習しないユーティリティ変換の候補 (<see cref="Utility.UtilityCandidates.NotLearned"/>)。</summary>
         public HashSet<string> NotLearned { get; } = new(StringComparer.Ordinal);
 
@@ -363,7 +365,7 @@ public sealed partial class CompositionController
     /// </summary>
     private bool RefreshOpenConversion()
     {
-        if (_clausesEdited || _reconversion is not null || _clauses.Count == 0) return false;
+        if (_clausesEdited || _reconversion is not null || _clauses.Count == 0 || _clauses is [{ Fixed: true }]) return false;
         var (old, selected, tabStarted) = (_clauses, _selectedClause, _tabStartedConversion);
         WithoutWaiting(() =>
         {

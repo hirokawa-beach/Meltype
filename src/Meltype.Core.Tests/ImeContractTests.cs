@@ -15,6 +15,22 @@ namespace Meltype.Tests;
 /// </summary>
 internal static class ImeContractTests
 {
+    [Test]
+    public static void PostalCode_AddressCandidateAndCommitReachTheFront()
+    {
+        foreach (var input in new[] { "1000001", "100-0001" })
+        {
+            var front = new Front();
+            var result = front.Type(input + " ")[^1].GetProperty("result");
+            var candidates = result.GetProperty("view").GetProperty("candidates");
+            Assert.Equal(input, front.Composition["t1"], front.Trace);
+            Assert.Equal("住所", candidates.GetProperty("notes")[1].GetString(), front.Trace);
+            front.Key(VirtualKeys.Down);
+            front.Key(VirtualKeys.Return);
+            Assert.Equal("東京都千代田区千代田", front.Document, front.Trace);
+        }
+    }
+
     /// <summary>
     /// 何も判断しないフロント。入力欄の文字・変換中の表示・OS の IME の開閉だけを持ち、
     /// キャレットの前後と開閉を事実として送り、返ってきた確定・表示・開閉をそのまま反映する。
@@ -115,6 +131,8 @@ internal static class ImeContractTests
             '/' => Key(0xBF, key, instance: instance, moved: moved),
             '"' => Key(0xDE, key, shift: true, instance: instance, moved: moved),
             ']' => Key(0xDD, key, instance: instance, moved: moved),
+            '-' => Key(VirtualKeys.OemMinus, key, instance: instance, moved: moved),
+            >= '0' and <= '9' => Key(key, key, instance: instance, moved: moved),
             >= 'a' and <= 'z' => Key(key - 'a' + 'A', key, instance: instance, moved: moved),
             _ => throw new ArgumentException($"送れないキー: {key}"),
         };

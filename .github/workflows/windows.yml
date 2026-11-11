@@ -38,6 +38,8 @@ jobs:
           python-version: '3.12'
       - name: Test Mozc-UT dictionary merge
         run: python native/mozc/tests/test_merge_ut_dictionary.py
+      - name: Test postal dictionary generator
+        run: python tools/test_postal_generator.py
 
       # Meltype IME (入力欄に直接入力する TSF の DLL)。C++ なので dotnet build とは別にビルドする (x64 と x86)。
       - name: Build Meltype IME

@@ -71,7 +71,18 @@ internal static class TipEndToEnd
         var ready = new ManualResetEventSlim();
         Control? serverInvoker = null;
         uint serverThreadId = 0;
-        var settings = new Config.Settings { Mode = Config.InputMode.Tsf, LiveConversion = false, ConversionEngine = Config.ConversionEngine.System };
+        var postalVariants = Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_VARIANTS") == "1";
+        var settings = new Config.Settings
+        {
+            Mode = Config.InputMode.Tsf,
+            LiveConversion = false,
+            ConversionEngine = Config.ConversionEngine.System,
+            PostalStreetAndTownCandidates = postalVariants,
+            PostalStreetCandidates = postalVariants,
+            PostalKoazaCandidates = Environment.GetEnvironmentVariable("MELTYPE_E2E_KOAZA") != "0",
+            PostalFloorNumbers = Environment.GetEnvironmentVariable("MELTYPE_E2E_HALF_FLOOR") == "1"
+                ? Config.PostalFloorNumberWidth.HalfWidth : Config.PostalFloorNumberWidth.FullWidth,
+        };
         var serverThread = new Thread(() =>
         {
             var invoker = new Control();
@@ -136,6 +147,51 @@ internal static class TipEndToEnd
                     results.Add((name, expected, box.Text));
                     if (caret is { } position)
                         results.Add((name + " (カーソル)", $"{position}:0", $"{box.SelectionStart}:{box.SelectionLength}"));
+                }
+
+                if (Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_ONLY") == "1")
+                {
+                    async Task Postal(string input, string name, int candidate = 1)
+                    {
+                        box.Clear();
+                        await Task.Delay(200);
+                        TypeKeys(input + " ");
+                        await Task.Delay(500);
+                        if (ShotDirectory is { } shot) Capture(form, Path.Combine(shot, name + ".png"));
+                        TypeKeys(new string('↓', candidate) + "\n");
+                        await Task.Delay(800);
+                        var types = Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_VARIANTS") == "1"
+                            ? new Composition.PostalCodeDictionary.CandidateTypes(true, true, true)
+                            : Composition.PostalCodeDictionary.CandidateTypes.Default;
+                        types = types with { Koaza = Environment.GetEnvironmentVariable("MELTYPE_E2E_KOAZA") != "0", HalfWidthFloorNumbers = Environment.GetEnvironmentVariable("MELTYPE_E2E_HALF_FLOOR") == "1" };
+                        results.Add((name, Composition.PostalCodeDictionary.Lookup(input, types)[candidate - 1].Text, box.Text));
+                    }
+                    await Postal("1000001", "postal-digits-tokyo");
+                    await Postal("100-0001", "postal-hyphen-tokyo");
+                    await Postal("6028368", "postal-digits-kyoto");
+                    await Postal("602-8368", "postal-hyphen-kyoto");
+                    await Postal("0600001", "postal-range");
+                    await Postal("0030022", "postal-direction-retained");
+                    await Postal("1006001", "postal-building-first-floor");
+                    await Postal("9692701", "postal-koaza-default");
+                    if (Environment.GetEnvironmentVariable("MELTYPE_E2E_KOAZA") != "0")
+                    {
+                        await Postal("9692701", "postal-koaza-first", 1);
+                        await Postal("9692701", "postal-koaza-last", 17);
+                    }
+                    await Postal("9790622", "postal-koaza-number-brackets");
+                    await Postal("3703311", "postal-koaza-quoted-name");
+                    await Postal("1006090", "postal-building-unknown-floor");
+                    await Postal("1006036", "postal-building-floor-36");
+                    await Postal("1000013", "postal-building-exclusion");
+                    await Postal("1416001", "postal-building-english");
+                    await Postal("6308037", "postal-long-raw-retained");
+                    if (Environment.GetEnvironmentVariable("MELTYPE_E2E_POSTAL_VARIANTS") == "1")
+                    {
+                        await Postal("6028368", "postal-street-town", 2);
+                        await Postal("6028368", "postal-street-only-last-page", 43);
+                    }
+                    return;
                 }
 
                 await Case("かな", "kyouha\n", "きょうは");
@@ -296,6 +352,9 @@ internal static class TipEndToEnd
                 '\u001b' => 0x1B,
                 '§' => 0xF3,
                 '←' => 0x25,
+                '↓' => 0x28,
+                '-' => 0xBD,
+                >= '0' and <= '9' => c,
                 >= 'a' and <= 'z' => c - 'a' + 'A',
                 _ => (int)VkKeyScan(c),
             };
