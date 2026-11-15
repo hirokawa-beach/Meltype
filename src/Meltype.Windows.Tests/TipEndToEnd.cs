@@ -76,7 +76,6 @@ internal static class TipEndToEnd
         {
             Mode = Config.InputMode.Tsf,
             LiveConversion = false,
-            ConversionEngine = Config.ConversionEngine.System,
             PostalStreetAndTownCandidates = postalVariants,
             PostalStreetCandidates = postalVariants,
             PostalKoazaCandidates = Environment.GetEnvironmentVariable("MELTYPE_E2E_KOAZA") != "0",

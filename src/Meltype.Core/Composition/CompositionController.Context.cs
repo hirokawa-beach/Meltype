@@ -21,15 +21,15 @@ public sealed partial class CompositionController
         memory.Context = _text.PrecedingEnglish;
     }
 
-    private void BeginComposition()
+    private void BeginComposition(bool privateInput = false)
     {
+        _privateComposition = Private || privateInput;
         _keptChoices.Clear();
         _modeByKey = false;
         _escReverted = false;
         // 設定「英字を主に入力」: 判定せず、打った英字のまま見せる (issue #839)
         if (_settings().EnglishFirstInput && !KanaInput && _text.Mode == DisplayMode.Auto) _text.Mode = DisplayMode.HalfWidthAlphanumeric;
         _text.KanaInput = KanaInput;
-        _text.Punctuation = _settings().Punctuation;
         _text.FullWidthParentheses = _settings().FullWidthParentheses;
         _text.SquareBrackets = _settings().SquareBrackets;
         _text.LaughterAfterKana = _settings().LaughterAfterKana;

@@ -22,6 +22,8 @@ namespace Meltype.Composition;
 /// 書き間違いの修正は Suggestion に入れる。案内が無ければ null。
 /// </para>
 /// Notes は Candidates と同じ順序・件数の注記。注記がない候補は None、リスト全体を省略するときは null。
+/// 入力欄に入りうる文字の欄 (Text・Candidates・Clauses・Suggestion・Predictions・Committed) は、CompositionOutput.Show が設定の句読点にする。
+/// そういう欄を足したら Show にも足す。
 /// </summary>
 public sealed record CompositionView(
     string Text,
@@ -84,7 +86,7 @@ public sealed partial class CompositionController
     /// <summary>自分が確定してから、この時間内はアプリ側のテキストがまだ更新されていないかもしれないので自分の記録を優先する。</summary>
     private const long OwnCommitTrustMs = 1500;
 
-    private readonly CompositionOutput _out = new();
+    private readonly CompositionOutput _out;
     private readonly CompositionText _text;
     // かな配列 (JIS かな以外。設定が変わったら作り直す。issue #1415)
     private KanaLayoutEngine _kanaLayout = new(KanaLayout.Jis);
@@ -154,6 +156,12 @@ public sealed partial class CompositionController
         /// <summary>ユーティリティ変換の Replace の文節。候補を足さず、文節の区切りも動かさない。</summary>
         public bool Fixed { get; init; }
 
+        /// <summary>
+        /// ユーティリティ変換の Prepend で、候補の先頭に足した候補の数。変換エンジンの候補の一覧 (Expand) は、その後ろに入れる
+        /// (先頭に足した漢字の間に 言偏にふるとり が入らないように)。
+        /// </summary>
+        public int Leading { get; set; }
+
         /// <summary>候補と同じ順・件数の注記 (ユーティリティ変換が決めたもの)。null なら候補から決める (<see cref="CandidateNotes"/>)。</summary>
         public IReadOnlyList<CandidateNote>? Notes { get; init; }
 
@@ -179,6 +187,7 @@ public sealed partial class CompositionController
         _converter = converter;
         _budget = (converter as IBackgroundConverter)?.Budget;
         _settings = settings;
+        _out = new CompositionOutput(() => settings().Punctuation);
         _services = services ?? new CompositionServices();
         _learning = new CompositionLearning(_services, converter);
         _text.Manual = () => !_settings().AutoDetection;
@@ -190,18 +199,23 @@ public sealed partial class CompositionController
         _text.CorrectTypos = () => _settings().CorrectTypos;
         _text.Slash = () => _settings().Slash;
         _text.ZSymbols = () => _settings().ZSymbols;
-        _text.SlashAtStart = () =>
-        {
-            var marked = _slashAtStart;
-            _slashAtStart = false;
-            return marked;
-        };
     }
 
-    /// <summary>入力を覚えないように求める入力欄か。true の間は学習しない。</summary>
-    public bool Private { get; set; }
+    private bool _privateField;
+    private bool _privateComposition;
 
-    private bool Learning => _settings().LearningEnabled && !Private;
+    /// <summary>入力を覚えないように求める入力欄か。その欄で扱った未確定入力は、欄を離れて確定しても学習しない。</summary>
+    public bool Private
+    {
+        get => _privateField;
+        set
+        {
+            _privateField = value;
+            if (value && IsComposing) _privateComposition = true;
+        }
+    }
+
+    private bool Learning => _settings().LearningEnabled && !Private && !_privateComposition;
 
     private bool KanaInput => _settings().InputStyle == Config.InputStyle.Kana;
 
@@ -469,7 +483,7 @@ public sealed partial class CompositionController
             !_text.IsEmpty && _text.Raw.All(char.IsAsciiLetter))
         {
             _correctable.Clear();
-            CommitText(_text.Raw, english: true, preserveText: true);
+            CommitText(_text.Raw, english: true, preserveText: true, rule: "英字にアクセント記号が続くので打ったまま");
         }
         else CommitIfAny(preserveText);
         UpdateView();
@@ -484,6 +498,28 @@ public sealed partial class CompositionController
         _clauses = [];
         _spaceStartedConversion = false;
         _tabStartedConversion = false;
+    }
+
+    /// <summary>パスワード欄に移ったとき、未確定入力と前の欄の文脈を確定せずに捨てる。</summary>
+    internal void CancelPending()
+    {
+        ClearComposition();
+        ClearHeld();
+        ForgetLastCommit();
+        _caretBefore = null;
+        _precedingText = null;
+        _followingText = null;
+        _pendingReplace = null;
+        _privateComposition = false;
+        _keptChoices.Clear();
+        _liveCache.Clear();
+        _predictions = [];
+        _predictionKey = "";
+        _predictionIndex = -1;
+        _pressed.Clear();
+        _kanaLayout.Reset();
+        _out.Begin(null, null);
+        _out.Hide();
     }
 
     /// <summary>フォーカスが変わったときなど。前の入力欄の文脈を持ち越さない。</summary>
