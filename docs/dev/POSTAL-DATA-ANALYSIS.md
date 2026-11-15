@@ -104,7 +104,7 @@ schema 4 の UTF-8 TSV を gzip にし、共通 Core に埋め込む。8 列は�
 Python 3.10 以降の標準ライブラリだけで生成できます。月ごとの公式更新を確認し、全国全件版から再生成します。実行時の自動ダウンロードは行いません。
 
 ```powershell
-python tools/generate-postal-codes.py --input path/to/utf_ken_all.zip --source-date 2026-09-30 --report path/to/classification.json
+python tools/make-postal-codes.py --input path/to/utf_ken_all.zip --source-date 2026-09-30 --report path/to/classification.json
 # --input を省略した場合だけ、開発用ツールが公式サイトから取得します。
 python tools/test_postal_generator.py
 dotnet run --project src/Meltype.Core.Tests -- Postal

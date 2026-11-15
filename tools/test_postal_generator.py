@@ -10,7 +10,7 @@ from pathlib import Path
 import unittest
 import zipfile
 
-spec = importlib.util.spec_from_file_location("postal_generator", Path(__file__).with_name("generate-postal-codes.py"))
+spec = importlib.util.spec_from_file_location("postal_generator", Path(__file__).with_name("make-postal-codes.py"))
 generator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(generator)
 
